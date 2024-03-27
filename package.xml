@@ -14,5 +14,6 @@
   <depend>mav_msgs</depend>
   <depend>planner_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>mrs_msgs</depend>
 
 </package>

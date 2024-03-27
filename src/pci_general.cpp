@@ -8,6 +8,10 @@ PCIGeneral::PCIGeneral(const ros::NodeHandle& nh,
   trajectory_pub_ = nh_.advertise<trajectory_msgs::MultiDOFJointTrajectory>(
       mav_msgs::default_topics::COMMAND_TRAJECTORY, 10);
   path_pub_ = nh_.advertise<geometry_msgs::PoseArray>("pci_command_path", 10);
+
+  mrs_trajectory_reference_srv_ =
+      nh_.serviceClient<mrs_msgs::TrajectoryReferenceSrv>(
+          "/uav1/control_manager/trajectory_reference");
 }
 
 bool PCIGeneral::initialize() {
@@ -18,12 +22,15 @@ bool PCIGeneral::initialize() {
   if (run_mode_ == RunModeType::kSim) {
     // Start the initialization motion first.
     if (init_motion_enable_) {
-      ROS_WARN_COND(global_verbosity >= Verbosity::WARN, "PCIGeneral::initialize --> manually from UI.");
+      ROS_WARN_COND(global_verbosity >= Verbosity::WARN,
+                    "PCIGeneral::initialize --> manually from UI.");
     }
   } else if (run_mode_ == RunModeType::kReal) {
-    ROS_WARN_COND(global_verbosity >= Verbosity::WARN, "PCIGeneral::initialize --> manually from UI.");
+    ROS_WARN_COND(global_verbosity >= Verbosity::WARN,
+                  "PCIGeneral::initialize --> manually from UI.");
   } else {
-    ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR, "PCIGeneral::initialize --> Not support.");
+    ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR,
+                   "PCIGeneral::initialize --> Not support.");
   }
   if (output_type_ == OutputType::kTopic) {
     execution_timer_ = nh_.createTimer(
@@ -35,12 +42,15 @@ bool PCIGeneral::initialize() {
 bool PCIGeneral::initMotion() {
   // Set initialization function here.
   ros::Duration(1.0).sleep();
-  ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "Performing initialization motion");
-  ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "Current pose: %f, %f, %f", current_pose_.position.x,
-           current_pose_.position.y, current_pose_.position.z);
+  ROS_INFO_COND(global_verbosity >= Verbosity::INFO,
+                "Performing initialization motion");
+  ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "Current pose: %f, %f, %f",
+                current_pose_.position.x, current_pose_.position.y,
+                current_pose_.position.z);
 
   std::vector<geometry_msgs::Pose> init_path, exec_path;
-  ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "Robot type: %d", (int)robot_type_);
+  ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "Robot type: %d",
+                (int)robot_type_);
   if (robot_type_ == RobotType::kAerial) {
     {
       geometry_msgs::Pose pose;
@@ -309,9 +319,11 @@ bool PCIGeneral::goToWaypoint(geometry_msgs::Pose& pose) {
 bool PCIGeneral::executePath(const std::vector<geometry_msgs::Pose>& path,
                              std::vector<geometry_msgs::Pose>& modified_path,
                              ExecutionPathType path_type) {
+
+
   if (path.size() == 0) return false;
   std::vector<geometry_msgs::Pose> path_new = path;
-
+  
   if (path_type != ExecutionPathType::kManualPath) {
     // Only modify for path derived from auto mode.
     // Extend the path to current position if necessary to achieve better
@@ -319,7 +331,8 @@ bool PCIGeneral::executePath(const std::vector<geometry_msgs::Pose>& path,
     if (reconnectPath(path, path_new)) {
       ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "Reconnect done");
     } else {
-      ROS_WARN_COND(global_verbosity >= Verbosity::WARN, 
+      ROS_WARN_COND(
+          global_verbosity >= Verbosity::WARN,
           "Unsafe to execute this path since it is too far from the current "
           "position");
       modified_path.push_back(current_pose_);
@@ -342,11 +355,12 @@ bool PCIGeneral::executePath(const std::vector<geometry_msgs::Pose>& path,
     interpolatePath(path_new, path_interp);
     path_new = path_interp;
   }
-
+  
   // Store the current path
   executing_path_ = path_new;
   // Return the final path
   modified_path = path_new;
+
 
   // Execute the path: same interface for both simulation and real system.
   if ((run_mode_ == RunModeType::kSim) || (run_mode_ == RunModeType::kReal)) {
@@ -379,6 +393,21 @@ bool PCIGeneral::executePath(const std::vector<geometry_msgs::Pose>& path,
       trajectory_vis_pub_.publish(
           generateTrajectoryMarkerArray(samples_array_));
       trajectory_pub_.publish(samples_array_);
+      mrs_msgs::TrajectoryReferenceSrv srv =
+          convert_traj_to_mrs_srv(samples_array_, world_frame_id_);
+      bool srv_status = mrs_trajectory_reference_srv_.call(srv);
+
+      if (!srv_status) {
+        ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR,
+                       "Failed to call mrs_trajectory_reference_srv");
+        return false;
+      } else if (!srv.response.success) {
+        ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR,
+                       "Failed to call mrs_trajectory_reference_srv_: %s",
+                       srv.response.message.c_str());
+        return false;
+      }
+
       path_pub_.publish(command_path);
       pci_status_ = PCIStatus::kRunning;
     } else if (output_type_ == OutputType::kAction) {
@@ -392,7 +421,8 @@ bool PCIGeneral::executePath(const std::vector<geometry_msgs::Pose>& path,
       }
       goal.path = path_stamped;
 
-      ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "Going to send the goal");
+      ROS_INFO_COND(global_verbosity >= Verbosity::INFO,
+                    "Going to send the goal");
       if (ac_.waitForServer(ros::Duration(kServerWatingTimeout))) {
         trajectory_vis_pub_.publish(generateTrajectoryMarkerArray(path_new));
         ac_.sendGoal(
@@ -402,13 +432,55 @@ bool PCIGeneral::executePath(const std::vector<geometry_msgs::Pose>& path,
         pci_status_ = PCIStatus::kRunning;
         ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "Goal sent.");
       } else {
-        ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR, "It was not possible to send path to action server.");
+        ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR,
+                       "It was not possible to send path to action server.");
       }
     }
   } else {
-    ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR, "PCIGeneral::executePath --> Not support.");
+    ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR,
+                   "PCIGeneral::executePath --> Not support.");
   }
   return true;
+}
+
+mrs_msgs::TrajectoryReferenceSrv PCIGeneral::convert_traj_to_mrs_srv(
+    const trajectory_msgs::MultiDOFJointTrajectory& trajectory,
+    const std::string& frame_str) {
+  static int id = 0;
+  mrs_msgs::TrajectoryReferenceSrv traj_srv;
+  mrs_msgs::TrajectoryReference traj_msg;
+  traj_msg.header.frame_id = frame_str;
+  traj_msg.header.stamp = ros::Time::now();
+
+  traj_msg.use_heading = true;
+  traj_msg.fly_now = true;
+  traj_msg.input_id = id++;
+
+  if (trajectory.points.size() < 2) {
+    ROS_WARN(
+        "Trajectory has less than 2 points, cannot convert to "
+        "mrs_msgs::TrajectoryReference");
+    traj_msg.fly_now = false;
+    return traj_srv;
+  } else
+    traj_msg.dt = trajectory.points[1].time_from_start.toSec() -
+                  trajectory.points[0].time_from_start.toSec();
+
+  for (int i = 0; i < trajectory.points.size(); ++i) {
+    mrs_msgs::Reference p;
+    p.position.x = trajectory.points[i].transforms[0].translation.x;
+    p.position.y = trajectory.points[i].transforms[0].translation.y;
+    p.position.z = trajectory.points[i].transforms[0].translation.z;
+
+    // get yaw from quaternion
+    p.heading = tf::getYaw(trajectory.points[i].transforms[0].rotation);
+
+    traj_msg.points.push_back(p);
+  }
+
+  traj_srv.request.trajectory = traj_msg;
+
+  return traj_srv;
 }
 
 bool PCIGeneral::reconnectPath(const std::vector<geometry_msgs::Pose>& path,
@@ -457,7 +529,8 @@ bool PCIGeneral::reconnectPath(const std::vector<geometry_msgs::Pose>& path,
     // Deviation from the path due to tracking error in the control.
     const double kPointToSegmentDistThreshold = 0.20;
     if (calculateDistance(executing_path_.back(), path.front()) <= kDiffEps) {
-      ROS_WARN_COND(global_verbosity >= Verbosity::WARN, "Trying to connect prev path and current path.");
+      ROS_WARN_COND(global_verbosity >= Verbosity::WARN,
+                    "Trying to connect prev path and current path.");
       // Check if current pos belongs to any segment.
       int exe_path_size = executing_path_.size();
       for (int ind = exe_path_size - 1; ind > 0; --ind) {
@@ -483,7 +556,8 @@ bool PCIGeneral::reconnectPath(const std::vector<geometry_msgs::Pose>& path,
           if ((v_dot_prod >= 0) && (v_dot_prod < v1.squaredNorm()) &&
               (v_cross_prod.squaredNorm() / v1.norm() <
                kPointToSegmentDistThreshold)) {
-            ROS_WARN_COND(global_verbosity >= Verbosity::WARN, "Belong to this segment");
+            ROS_WARN_COND(global_verbosity >= Verbosity::WARN,
+                          "Belong to this segment");
             path_new.insert(path_new.begin(), current_pose_);
             reconnect_ok = true;
             break;
@@ -533,7 +607,8 @@ void PCIGeneral::allocateYawAlongPath(
     std::vector<geometry_msgs::Pose>& path) const {
   // Return if only one vertex or less.
   if (path.size() <= 1) return;
-  ROS_WARN_COND(global_verbosity >= Verbosity::WARN, "V max: %f, yr max: %f", v_max_, yaw_rate_max_);
+  ROS_WARN_COND(global_verbosity >= Verbosity::WARN, "V max: %f, yr max: %f",
+                v_max_, yaw_rate_max_);
   // Assign new heading along each segment except the first one.
   double yaw_prev = tf::getYaw(path[0].orientation);
   for (int i = 1; i < path.size(); ++i) {
@@ -635,7 +710,9 @@ void PCIGeneral::executionTimerCallback(const ros::TimerEvent& event) {
   }
 }
 
-void PCIGeneral::actionActiveCallback() { ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "PCI: Goal went active"); }
+void PCIGeneral::actionActiveCallback() {
+  ROS_INFO_COND(global_verbosity >= Verbosity::INFO, "PCI: Goal went active");
+}
 
 void PCIGeneral::actionFeedbackCallback(
     const planner_msgs::pathFollowerActionFeedbackConstPtr& feedback) {
@@ -658,7 +735,8 @@ bool PCIGeneral::actionDoneCallback(
 }
 
 void PCIGeneral::triggerPlanner() {
-  ROS_INFO_COND(param_verbosity >= Verbosity::INFO, "PCI: Ready to trigger the planner.");
+  ROS_INFO_COND(param_verbosity >= Verbosity::INFO,
+                "PCI: Ready to trigger the planner.");
   // legacy flag, clean later.
   finish_goal_ = true;
   // should check this status instead.
@@ -677,115 +755,136 @@ bool PCIGeneral::loadParams(const std::string ns) {
     run_mode_ = RunModeType::kSim;
   else {
     run_mode_ = RunModeType::kSim;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No run mode setting, set it to kSim.");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No run mode setting, set it to kSim.");
   }
 
   param_name = ns + "/init_motion_enable";
   if (!ros::param::get(param_name, init_motion_enable_)) {
     init_motion_enable_ = true;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No motion initialization setting, set it to True.");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No motion initialization setting, set it to True.");
   }
 
   param_name = ns + "/world_frame_id";
   if (!ros::param::get(param_name, world_frame_id_)) {
     world_frame_id_ = "world";
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No world_frame_id setting, set it to: %s ",
-             world_frame_id_.c_str());
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No world_frame_id setting, set it to: %s ",
+                  world_frame_id_.c_str());
   }
 
   param_name = ns + "/init_motion/z_takeoff";
   if (!ros::param::get(param_name, init_z_takeoff_)) {
     init_z_takeoff_ = 0.0;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No init_motion/z_takeoff setting, set it to 0.0 (s).");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No init_motion/z_takeoff setting, set it to 0.0 (s).");
   }
   param_name = ns + "/init_motion/z_drop";
   if (!ros::param::get(param_name, init_z_drop_)) {
     init_z_drop_ = 0.0;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No init_motion/z_drop setting, set it to 0.0 (s).");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No init_motion/z_drop setting, set it to 0.0 (s).");
   }
   param_name = ns + "/init_motion/x_forward";
   if (!ros::param::get(param_name, init_x_forward_)) {
     init_x_forward_ = 0.0;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No init_motion/x_forward setting, set it to 0.0 (s).");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No init_motion/x_forward setting, set it to 0.0 (s).");
   }
 
   param_name = ns + "/RobotDynamics/v_max";
   if (!ros::param::get(param_name, v_max_)) {
     v_max_ = 0.2;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No v_max setting, set it to 0.2 (m/s).");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No v_max setting, set it to 0.2 (m/s).");
   }
 
   param_name = ns + "/RobotDynamics/v_init_max";
   if (!ros::param::get(param_name, v_init_max_)) {
     v_init_max_ = 0.2;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No v_max setting, set it to 0.2 (m/s).");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No v_max setting, set it to 0.2 (m/s).");
   }
 
   param_name = ns + "/RobotDynamics/v_homing_max";
   if (!ros::param::get(param_name, v_homing_max_)) {
     v_homing_max_ = v_max_;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No v_max_homing setting, set it to %f (m/s).", v_homing_max_);
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No v_max_homing setting, set it to %f (m/s).",
+                  v_homing_max_);
   }
 
   param_name = ns + "/RobotDynamics/v_narrow_env_max";
   if (!ros::param::get(param_name, v_narrow_env_max_)) {
     v_narrow_env_max_ = v_max_;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No v_narrow_env_max setting, set it to %f (m/s).",
-             v_narrow_env_max_);
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No v_narrow_env_max setting, set it to %f (m/s).",
+                  v_narrow_env_max_);
   }
 
   param_name = ns + "/RobotDynamics/yaw_rate_max";
   if (!ros::param::get(param_name, yaw_rate_max_)) {
     yaw_rate_max_ = M_PI_4 / 2.0;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No yaw_rate_max setting, set it to PI/8 (rad/s)");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No yaw_rate_max setting, set it to PI/8 (rad/s)");
   }
 
   param_name = ns + "/RobotDynamics/dt";
   if (!ros::param::get(param_name, dt_)) {
     dt_ = 0.1;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No dt setting, set it to 0.1 (s).");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No dt setting, set it to 0.1 (s).");
   }
 
   param_name = ns + "/planner_trigger_lead_time";
   if (!ros::param::get(param_name, planner_trigger_lead_time_) ||
       (planner_trigger_lead_time_ <= 0.0)) {
     planner_trigger_lead_time_ = 0.0;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No planner_trigger_lead_time setting, set it to 0.0 (s).");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No planner_trigger_lead_time setting, set it to 0.0 (s).");
   } else {
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "planner_trigger_lead_time_: %f", planner_trigger_lead_time_);
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "planner_trigger_lead_time_: %f", planner_trigger_lead_time_);
   }
 
   param_name = ns + "/smooth_heading_enable";
   if (!ros::param::get(param_name, smooth_heading_enable_)) {
     smooth_heading_enable_ = true;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No smooth_heading_enable_ setting, set it to: True.");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No smooth_heading_enable_ setting, set it to: True.");
   }
 
   param_name = ns + "/homing_yaw_allocation_enable";
   if (!ros::param::get(param_name, homing_yaw_allocation_enable_)) {
     homing_yaw_allocation_enable_ = true;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No homing_yaw_allocation_enable setting, set it to: True.");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No homing_yaw_allocation_enable setting, set it to: True.");
   }
 
   param_name = ns + "/use_action_server_path_manager";
   if (!ros::param::get(param_name, use_action_client_path_manager_)) {
     use_action_client_path_manager_ = "false";
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No use_action_server_path_manager setting, set it to: false.");
+    ROS_WARN_COND(
+        param_verbosity >= Verbosity::WARN,
+        "No use_action_server_path_manager setting, set it to: false.");
   }
 
   param_name = ns + "/robot_type";
   std::string robot_type_in;
   if (!ros::param::get(param_name, robot_type_in)) {
     robot_type_ = RobotType::kAerial;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No robot_type setting, set it to: kAerial.");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No robot_type setting, set it to: kAerial.");
   } else {
     if (robot_type_in == "kAerial") {
       robot_type_ = RobotType::kAerial;
     } else if (robot_type_in == "kGround") {
       robot_type_ = RobotType::kGround;
     } else {
-      ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "Unknown Robot Type %s, setting it to: kAerial.",
-               robot_type_in.c_str());
+      ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                    "Unknown Robot Type %s, setting it to: kAerial.",
+                    robot_type_in.c_str());
       robot_type_ = RobotType::kAerial;
     }
   }
@@ -794,15 +893,17 @@ bool PCIGeneral::loadParams(const std::string ns) {
   std::string output_type_in;
   if (!ros::param::get(param_name, output_type_in)) {
     output_type_ = OutputType::kTopic;
-    ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "No output_type setting, set it to: kAerial.");
+    ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                  "No output_type setting, set it to: kAerial.");
   } else {
     if (output_type_in == "kTopic") {
       output_type_ = OutputType::kTopic;
     } else if (output_type_in == "kAction") {
       output_type_ = OutputType::kAction;
     } else {
-      ROS_WARN_COND(param_verbosity >= Verbosity::WARN, "Unknown Robot Type %s, setting it to: kAerial.",
-               output_type_in.c_str());
+      ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
+                    "Unknown Robot Type %s, setting it to: kAerial.",
+                    output_type_in.c_str());
       output_type_ = OutputType::kTopic;
     }
   }
@@ -822,8 +923,12 @@ void PCIGeneral::setState(const geometry_msgs::Pose& pose) {
 
 void PCIGeneral::setVelocity(double v) {
   if ((v >= kVelMin) && (v <= kVelMax)) {
-    ROS_WARN_COND(global_verbosity >= Verbosity::WARN, "Changed velocity from %f to %f (m/s)", v_max_, v);
+    ROS_WARN_COND(global_verbosity >= Verbosity::WARN,
+                  "Changed velocity from %f to %f (m/s)", v_max_, v);
     v_max_ = v;
+  }else{
+    ROS_WARN_COND(global_verbosity >= Verbosity::WARN,
+                  "Invalid velocity value: %f (m/s)", v);
   }
 }
 

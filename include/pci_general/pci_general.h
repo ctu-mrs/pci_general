@@ -8,6 +8,7 @@
 #include <mav_msgs/Status.h>
 #include <mav_msgs/conversions.h>
 #include <mav_msgs/default_topics.h>
+#include <mrs_msgs/TrajectoryReferenceSrv.h>
 #include <ros/ros.h>
 #include <tf/tf.h>
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
@@ -51,6 +52,10 @@ class PCIGeneral : public PCIManager {
   visualization_msgs::MarkerArray::Ptr generateTrajectoryMarkerArray(
       const trajectory_msgs::MultiDOFJointTrajectory& traj) const;
 
+  mrs_msgs::TrajectoryReferenceSrv convert_traj_to_mrs_srv(
+      const trajectory_msgs::MultiDOFJointTrajectory& trajectory,
+      const std::string& frame_str);
+
   RunModeType run_mode_;
   bool init_motion_enable_;
 
@@ -79,6 +84,8 @@ class PCIGeneral : public PCIManager {
 
   void executionTimerCallback(const ros::TimerEvent& event);
   ros::Timer execution_timer_;
+
+  ros::ServiceClient mrs_trajectory_reference_srv_;
 
   int n_seq_;
 
