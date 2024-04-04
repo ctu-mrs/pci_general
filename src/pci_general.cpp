@@ -11,7 +11,7 @@ PCIGeneral::PCIGeneral(const ros::NodeHandle& nh,
 
   mrs_trajectory_reference_srv_ =
       nh_.serviceClient<mrs_msgs::TrajectoryReferenceSrv>(
-          "/uav1/control_manager/trajectory_reference");
+          "mrs_trajectory_reference_out");
 }
 
 bool PCIGeneral::initialize() {
