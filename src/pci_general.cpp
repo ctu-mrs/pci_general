@@ -23,14 +23,14 @@ bool PCIGeneral::initialize() {
     // Start the initialization motion first.
     if (init_motion_enable_) {
       ROS_WARN_COND(global_verbosity >= Verbosity::WARN,
-                    "PCIGeneral::initialize --> manually from UI.");
+                    "PCIGeneral::initialize -- manually from UI.");
     }
   } else if (run_mode_ == RunModeType::kReal) {
     ROS_WARN_COND(global_verbosity >= Verbosity::WARN,
-                  "PCIGeneral::initialize --> manually from UI.");
+                  "PCIGeneral::initialize -- manually from UI.");
   } else {
     ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR,
-                   "PCIGeneral::initialize --> Not support.");
+                   "PCIGeneral::initialize -- Not support.");
   }
   if (output_type_ == OutputType::kTopic) {
     execution_timer_ = nh_.createTimer(
@@ -394,7 +394,7 @@ bool PCIGeneral::executePath(const std::vector<geometry_msgs::Pose>& path,
           generateTrajectoryMarkerArray(samples_array_));
       trajectory_pub_.publish(samples_array_);
       mrs_msgs::TrajectoryReferenceSrv srv =
-          convert_traj_to_mrs_srv(samples_array_, world_frame_id_);
+          convert_traj_to_mrs_srv(samples_array_, world_frame_id_, world_frame_id_override_mrs_);
       bool srv_status = mrs_trajectory_reference_srv_.call(srv);
 
       if (!srv_status) {
@@ -437,19 +437,18 @@ bool PCIGeneral::executePath(const std::vector<geometry_msgs::Pose>& path,
       }
     }
   } else {
-    ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR,
-                   "PCIGeneral::executePath --> Not support.");
+    ROS_ERROR_COND(global_verbosity >= Verbosity::ERROR, "PCIGeneral::executePath --- Not support");
   }
   return true;
 }
 
 mrs_msgs::TrajectoryReferenceSrv PCIGeneral::convert_traj_to_mrs_srv(
     const trajectory_msgs::MultiDOFJointTrajectory& trajectory,
-    const std::string& frame_str) {
+    const std::string& frame_str, const std::string& frame_override_str) {
   static int id = 0;
   mrs_msgs::TrajectoryReferenceSrv traj_srv;
   mrs_msgs::TrajectoryReference traj_msg;
-  traj_msg.header.frame_id = frame_str;
+  traj_msg.header.frame_id = frame_override_str;
   traj_msg.header.stamp = ros::Time::now();
 
   traj_msg.use_heading = true;
@@ -771,6 +770,14 @@ bool PCIGeneral::loadParams(const std::string ns) {
     world_frame_id_ = "world";
     ROS_WARN_COND(param_verbosity >= Verbosity::WARN,
                   "No world_frame_id setting, set it to: %s ",
+                  world_frame_id_.c_str());
+  }
+  
+  param_name = ns + "/world_frame_id_override_mrs";
+  if (!ros::param::get(param_name, world_frame_id_override_mrs_)) {
+    world_frame_id_override_mrs_ = world_frame_id_;
+    ROS_ERROR_COND(param_verbosity >= Verbosity::WARN,
+                  "No world_frame_id_override_mrs setting, set it to: %s ",
                   world_frame_id_.c_str());
   }
 

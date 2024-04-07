@@ -1,5 +1,4 @@
-#ifndef GBPLANNER_PCI_ANYMAL_H_
-#define GBPLANNER_PCI_ANYMAL_H_
+#ifndef GBPLANNER_PCI_ANYMAL_H_\n#define GBPLANNER_PCI_ANYMAL_H_
 
 #include <actionlib/client/simple_action_client.h>
 #include <eigen3/Eigen/Dense>
@@ -54,7 +53,7 @@ class PCIGeneral : public PCIManager {
 
   mrs_msgs::TrajectoryReferenceSrv convert_traj_to_mrs_srv(
       const trajectory_msgs::MultiDOFJointTrajectory& trajectory,
-      const std::string& frame_str);
+      const std::string& frame_str, const std::string& frame_override_str);
 
   RunModeType run_mode_;
   bool init_motion_enable_;
@@ -63,6 +62,7 @@ class PCIGeneral : public PCIManager {
   ros::Publisher path_pub_;
 
   std::string world_frame_id_;
+  std::string world_frame_id_override_mrs_;
   double planner_trigger_lead_time_;
   bool smooth_heading_enable_;
   bool homing_yaw_allocation_enable_;
