@@ -713,9 +713,9 @@ void PCIGeneral::executionTimerCallback(const ros::TimerEvent& event) {
         triggerPlanner();
       }
     }
-    if (got_mrs_control_manager_diag_ && mrs_control_manager_diag_.tracker_status.callbacks_enabled && !mrs_control_manager_diag_.tracker_status.have_goal && mrs_control_manager_diag_.tracker_status.tracking_trajectory) {
-      ROS_WARN("[%s]: cannot reach goal, replanning", ros::this_node::getName().c_str());
-        triggerPlanner();
+    if (got_mrs_control_manager_diag_ && mrs_control_manager_diag_.tracker_status.callbacks_enabled && !mrs_control_manager_diag_.tracker_status.have_goal && !mrs_control_manager_diag_.tracker_status.tracking_trajectory) {
+      ROS_WARN("PCI: cannot reach goal, replanning");
+      triggerPlanner();
     }
   }
 }
