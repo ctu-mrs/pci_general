@@ -9,7 +9,7 @@ PCIGeneral::PCIGeneral(const ros::NodeHandle& nh,
       mav_msgs::default_topics::COMMAND_TRAJECTORY, 10);
   path_pub_ = nh_.advertise<geometry_msgs::PoseArray>("pci_command_path", 10);
 
-  nh_.subscribe("mrs_control_manager", 1, &PCIGeneral::mrsControlManagerDiagTopicCallback, this);
+  mrs_control_manager_diag_sub_ = nh_.subscribe("mrs_control_manager_diag_in", 1, &PCIGeneral::mrsControlManagerDiagTopicCallback, this);
 
   mrs_trajectory_reference_srv_ =
       nh_.serviceClient<mrs_msgs::TrajectoryReferenceSrv>(
