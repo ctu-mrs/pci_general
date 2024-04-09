@@ -9,6 +9,8 @@ PCIGeneral::PCIGeneral(const ros::NodeHandle& nh,
       mav_msgs::default_topics::COMMAND_TRAJECTORY, 10);
   path_pub_ = nh_.advertise<geometry_msgs::PoseArray>("pci_command_path", 10);
 
+  nh_.subscribe("mrs_control_manager", 1, &PCIGeneral::mrsControlManagerDiagTopicCallback, this);
+
   mrs_trajectory_reference_srv_ =
       nh_.serviceClient<mrs_msgs::TrajectoryReferenceSrv>(
           "mrs_trajectory_reference_out");
@@ -693,6 +695,11 @@ void PCIGeneral::interpolatePath(const std::vector<geometry_msgs::Pose>& path,
   }
 }
 
+void PCIGeneral::mrsControlManagerDiagTopicCallback(const mrs_msgs::ControlManagerDiagnosticsConstPtr msg) {
+  mrs_control_manager_diag_ = *msg;
+  got_mrs_control_manager_diag_ = true;
+}
+
 void PCIGeneral::executionTimerCallback(const ros::TimerEvent& event) {
   if (pci_status_ == PCIStatus::kRunning) {
     double kGoalThres = 0.5;
@@ -705,6 +712,10 @@ void PCIGeneral::executionTimerCallback(const ros::TimerEvent& event) {
       if (remaining_dist <= kGoalThres) {
         triggerPlanner();
       }
+    }
+    if (got_mrs_control_manager_diag_ && mrs_control_manager_diag_.tracker_status.callbacks_enabled && !mrs_control_manager_diag_.tracker_status.have_goal && mrs_control_manager_diag_.tracker_status.tracking_trajectory) {
+      ROS_WARN("[%s]: cannot reach goal, replanning", ros::this_node::getName().c_str());
+        triggerPlanner();
     }
   }
 }

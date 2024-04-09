@@ -8,6 +8,7 @@
 #include <mav_msgs/conversions.h>
 #include <mav_msgs/default_topics.h>
 #include <mrs_msgs/TrajectoryReferenceSrv.h>
+#include <mrs_msgs/ControlManagerDiagnostics.h>
 #include <ros/ros.h>
 #include <tf/tf.h>
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
@@ -44,6 +45,8 @@ class PCIGeneral : public PCIManager {
 
   void processActionFeedback(double estimated_time_left);
   void triggerPlanner();
+  
+  void mrsControlManagerDiagTopicCallback(const mrs_msgs::ControlManagerDiagnosticsConstPtr msg);
 
  private:
   visualization_msgs::MarkerArray::Ptr generateTrajectoryMarkerArray(
@@ -60,6 +63,10 @@ class PCIGeneral : public PCIManager {
 
   ros::Publisher trajectory_pub_;
   ros::Publisher path_pub_;
+
+  ros::Subscriber mrs_control_manager_diag_sub_;
+  mrs_msgs::ControlManagerDiagnostics mrs_control_manager_diag_;
+  bool got_mrs_control_manager_diag_ = false;
 
   std::string world_frame_id_;
   std::string world_frame_id_override_mrs_;
